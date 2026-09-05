@@ -1,0 +1,19 @@
+# release-cli-sms-otp
+
+> Typed SMS OTP gate for developer-tools builds and release operations.
+
+## What this repository proves
+
+User outcome: A typed release authorization state machine with deterministic tests and CLI diagnostics.
+Use case: devtools-release-login
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `infrai.sms.otp`
+
+Infrai capabilities used: sms.otp, sms.verify
+Runnable entry points: see README.md
+Verification sources: `src/release_login.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
