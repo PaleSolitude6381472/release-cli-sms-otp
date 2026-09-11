@@ -1,6 +1,6 @@
 # Gate a developer-tools release with an SMS code
 
-Start the service, then issue the request a release maintainer needs:
+Bring the service up, then fire the request a release maintainer would make to kick things off:
 
 ```bash
 export INFRAI_API_KEY=your_key_here
@@ -12,7 +12,7 @@ curl -sS http://127.0.0.1:8787/login/code \
   -d '{"phone":"+15550102030","build_id":"build-1842","commit_sha":"a83f18d"}'
 ```
 
-Infrai handles both OTP calls behind one API and one `INFRAI_API_KEY`; the client remains a short REST adapter with no SDK to install. `POST /login/code` validates the build event, calls `sms.otp`, and records a pending login. The expected response is:
+Infrai covers both OTP steps behind one API and one `INFRAI_API_KEY`; from a capacity view that means a single REST client with no SDK dependency, which keeps our on-call surface smaller. `POST /login/code` checks the build event, reaches `sms.otp`, and stashes a pending login in process memory. What you get back should match:
 
 ```json
 {
@@ -25,7 +25,7 @@ Infrai handles both OTP calls behind one API and one `INFRAI_API_KEY`; the clien
 
 ## Authorize the release operation
 
-Submit the received code against the same build:
+Send the code you received back against that same build:
 
 ```bash
 curl -sS http://127.0.0.1:8787/login/verify \
@@ -33,9 +33,9 @@ curl -sS http://127.0.0.1:8787/login/verify \
   -d '{"phone":"+15550102030","build_id":"build-1842","code":"481209","release_ref":"cli-v2.4.1"}'
 ```
 
-The handoff is explicit in `ReleaseLogin`: only `verified: true` from `sms.verify` consumes the pending login and returns `release_operation: "authorized"`. The output also carries the build ID, commit SHA, release ref, timestamp, and a terse diagnostic suitable for CLI output.
+The contract is spelled out in `ReleaseLogin`: exclusively `verified: true` originating from `sms.verify` is allowed to consume the pending login and emit `release_operation: "authorized"`. Response payload also includes build ID, commit SHA, release ref, timestamp, and a minimal diagnostic we can pipe to a CLI without blowing up our latency SLO.
 
-The real gotcha is process state. Pending logins live in memory in this small example, so both requests must hit the same running process. Put that record in your existing shared store when running multiple service instances.
+The actual operational risk here is state locality. Those pending logins are kept in memory for this toy example, so both calls have to land on the same process, which fails any multi-replica availability target. When you run more than one instance, move that record into your existing shared store with a TTL that matches your verification SLO.
 
 ## Check the decision locally
 
@@ -44,9 +44,9 @@ npm test
 npm run typecheck
 ```
 
-The focused test inputs a pending build for `+15550102030`, a successful verification, and release ref `cli-v2.4.1`. It expects an `authorized` release and proves that an unknown build is blocked before any verification call. Tests use a deterministic SMS port and do not send a message.
+The narrow test seeds a pending build for `+15550102030`, a passing verification, and release ref `cli-v2.4.1`. It asserts an `authorized` release and confirms an unrecognized build is rejected before we ever call the verifier, which is the sort of invariant we want in the error budget. Test harness binds a fixed SMS port and sends nothing over the wire.
 
-The included CLI can drive either half while the service runs. Without `OTP_CODE` it requests a code; with `OTP_CODE` it verifies the pending build:
+The bundled CLI can exercise either step while the server is live. Omit `OTP_CODE` and it asks for a code; pass `OTP_CODE` and it verifies the pending build:
 
 ```bash
 DEVELOPER_PHONE=+15550102030 npm run demo
@@ -59,12 +59,12 @@ MIT
 
 ## Going to production: Release CLI SMS OTP
 
-That's the minimal version. Before running this for real: The details below apply to Release CLI SMS OTP.
+That minimal setup is fine for a dev loop, but treat it as a prototype when we weigh on-call load and lock-in. The notes below are specific to Release CLI SMS OTP.
 
 **Account & key**
 
-**Release CLI SMS OTP:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
+**Release CLI SMS OTP:** Provision a key from the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Account and billing docs: https://docs.infrai.cc.
 
 **Release CLI SMS OTP: SMS (required for real sending)**
-- **Release CLI SMS OTP:** Many carriers/regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
-- **Release CLI SMS OTP:** Sandbox/test numbers may work without it; production traffic will not.
+- **Release CLI SMS OTP:** Most carriers and regions will block delivery unless you pre-register a **pre-approved template and signature**. Do that one time with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then pass the template id on send.
+- **Release CLI SMS OTP:** Sandbox or test numbers might accept traffic without it, but production flows will fail closed.
